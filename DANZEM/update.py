@@ -66,7 +66,7 @@ def GetCurrent(dir_path):
     return days_covered
 
 
-BID_DATA_DIR_ = '../data/Bids'
+BID_DATA_DIR_ = 'DANZEM/data/Bids'
 BID_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Datasets/Wholesale/BidsAndOffers/Bids'
 BID_DATA_START_ = (2012, 12, 13)
 
@@ -87,7 +87,7 @@ def UpdateBids():
     DownloadBids(to_download)
 
 
-FINAL_PRICE_DIR_ = '../data/FinalPrices'
+FINAL_PRICE_DIR_ = 'DANZEM/data/FinalPrices'
 FINAL_PRICE_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Wholesale/Datasets/Final_pricing/Final_prices'
 FINAL_PRICE_START_ = (2010, 1)
 
@@ -107,7 +107,7 @@ def UpdateFinalPrices():
     DownloadFinalPrices(to_download)
 
 
-LGP_DIR_ = '../data/LoadGenerationPrice'
+LGP_DIR_ = 'DANZEM/data/LoadGenerationPrice'
 LGP_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Wholesale/Datasets/Final_pricing/Load_Generation_Price'
 LGP_SUFFIXES_ = ['.csv', '_F.csv', 'x_F.csv', 'x.csv', '_I.csv', 'x_I.csv']
 LGP_START_ = (2013, 1, 1)
@@ -136,7 +136,7 @@ def UpdateLGP():
     DownloadLGP(to_download)
 
 
-OFFERS_DIR_ = '../data/Offers'
+OFFERS_DIR_ = 'DANZEM/data/Offers'
 OFFERS_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Wholesale/Datasets/BidsAndOffers/Offers'
 OFFERS_START_ = (2013, 1, 1)
 
