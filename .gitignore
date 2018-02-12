@@ -5,5 +5,7 @@ DANZEM/data/Bids/
 DANZEM/data/FinalPrices/
 DANZEM/data/LoadGenerationPrice/
 DANZEM/data/Offers/
+DANZEM/data/ClearedOffers/
+DANZEM/data/Generation/
 DANZEM/data/test.csv
 

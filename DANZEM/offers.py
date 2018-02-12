@@ -21,7 +21,7 @@ def UTCInfoToDateTime(info):
                              second=second, tzinfo=data.UTC)
     
 
-def GetLatestOffers(df, minutes_before, wind=False):
+def GetLatestOffers(df, minutes_before=0, wind=False):
     df = df[df['ProductType'] == 'Energy'].copy()
     if not wind:
         wind_nodes = nodes.GetWindNodes()
@@ -48,3 +48,6 @@ def GetLatestOffers(df, minutes_before, wind=False):
     return df.groupby(['tpid', 'PointOfConnection', 'Unit',
                        'Trader', 'Band']).first()
 
+
+    def GetStacks(year, month, day, minutes_before=0, wind=False):
+        pass

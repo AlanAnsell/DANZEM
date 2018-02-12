@@ -66,95 +66,132 @@ def GetCurrent(dir_path):
     return days_covered
 
 
-BID_DATA_DIR_ = 'DANZEM/data/Bids'
-BID_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Datasets/Wholesale/BidsAndOffers/Bids'
-BID_DATA_START_ = (2012, 12, 13)
-
-def DownloadBids(bid_files):
-    for year, month, day in bid_files:
-        url = '%s/%d/%d%02d%02d_Bids.csv' % (
-                BID_URL_PREFIX_, year, year, month, day)
-        file_path = '%s/%d%02d%02d.csv' % (BID_DATA_DIR_, year, month, day)
-        DownloadCSV(url, file_path)
+def FileNameFromDateTuple(date):
+    if len(date) == 2:
+        return '%d%02d' % (date[0], date[1])
+    else:
+        return '%d%02d%02d' % (date[0], date[1], date[2])
 
 
-def UpdateBids():
-    day_range = DayRange(BID_DATA_START_, Today())
-    all_days = set(day_range[:-2])
-    current_days = set(GetCurrent(BID_DATA_DIR_))
-    to_download = sorted(list(all_days - current_days))
-    print('Downloading %d new bid files' % len(to_download))
-    DownloadBids(to_download)
+def DateStrFromDateTuple(date):
+    if len(date) == 2:
+        return '%d/%02d' % (date[0], date[1])
+    else:
+        return '%d/%02d/%02d' % (date[0], date[1], date[2])
 
 
-FINAL_PRICE_DIR_ = 'DANZEM/data/FinalPrices'
-FINAL_PRICE_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Wholesale/Datasets/Final_pricing/Final_prices'
-FINAL_PRICE_START_ = (2010, 1)
-
-def DownloadFinalPrices(final_price_files):
-    for year, month in final_price_files:
-        url = '%s/%d%02d_Final_prices.csv' % (FINAL_PRICE_URL_PREFIX_, year, month)
-        file_path = '%s/%d%02d.csv' % (FINAL_PRICE_DIR_, year, month)
-        DownloadCSV(url, file_path)
+DATA_BASE_DIR_ = 'DANZEM/data'
+STANDARD_URL_SUFFIX_ = ['.csv']
+EXTENDED_URL_SUFFIXES_ = [
+        '.csv', '_F.csv', 'x_F.csv', 'x.csv', '_I.csv', 'x_I.csv']
 
 
-def UpdateFinalPrices():
-    month_range = MonthRange(FINAL_PRICE_START_, Today()[:2])
-    all_months = set(month_range[:-2])
-    current_months = set(GetCurrent(FINAL_PRICE_DIR_))
-    to_download = sorted(list(all_months - current_months))
-    print('Downloading %d new final price files' % len(to_download))
-    DownloadFinalPrices(to_download)
-
-
-LGP_DIR_ = 'DANZEM/data/LoadGenerationPrice'
-LGP_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Wholesale/Datasets/Final_pricing/Load_Generation_Price'
-LGP_SUFFIXES_ = ['.csv', '_F.csv', 'x_F.csv', 'x.csv', '_I.csv', 'x_I.csv']
-LGP_START_ = (2013, 1, 1)
-
-def DownloadLGP(lgp_files):
-    for year, month, day in lgp_files:
-        file_path = '%s/%d%02d%02d.csv' % (LGP_DIR_, year, month, day)
+def DownloadDataset(name, url_fn, dates=[], url_suffixes=STANDARD_URL_SUFFIX_):
+    file_dir = '%s/%s' % (DATA_BASE_DIR_, name)
+    for date in dates:
+        file_name = FileNameFromDateTuple(date)
+        file_path = '%s/%s.csv' % (file_dir, file_name)
+        url_base = url_fn(date)
         found = False
-        for suffix in LGP_SUFFIXES_:
-            url = '%s/%d/%d%02d%02d_Load_Generation_Price%s' % (
-                    LGP_URL_PREFIX_, year, year, month, day, suffix)
+        for suffix in url_suffixes:
+            url = '%s%s' % (url_base, suffix)
             if DownloadCSV(url, file_path, warn=False):
                 found = True
                 break
         if not found:
-            print('**** Warning: could not find any LGP file for %d/%02d/%02d' % (
-                year, month, day))
+            date_str = DateStrFromDateTuple(date)
+            print('**** Warning: could not find any %s file for %s' % (
+                name, date_str))
 
+
+def MakeDayUrlFn(url_prefix, after_date):
+    def DayUrlFn(ymd):
+        return '%s/%d/%d%02d%02d_%s' % (url_prefix, ymd[0], ymd[0], ymd[1],
+                                        ymd[2], after_date)
+    return DayUrlFn
+
+
+def MakeMonthUrlFn(url_prefix, after_date):
+    def MonthUrlFn(ym):
+        return '%s/%d%02d_%s' % (url_prefix, ym[0], ym[1], after_date)
+    return MonthUrlFn
+
+
+def DateRangeToToday(date):
+    if len(date) == 2:
+        return MonthRange(date, Today()[:2])
+    else:
+        return DayRange(date, Today())
+
+
+def UpdateDataset(name, url_fn, start_date, hr_name=None,
+                  url_suffixes=STANDARD_URL_SUFFIX_):
+    if hr_name is None:
+        hr_name = name
+
+    date_range = DateRangeToToday(start_date)
+    available_dates = set(date_range[:-2])
+    file_dir = '%s/%s' % (DATA_BASE_DIR_, name)
+    stored_dates = set(GetCurrent(file_dir))
+    to_download = sorted(list(available_dates - stored_dates))
+    print('Downloading %d new %s files' % (len(to_download), hr_name))
+    DownloadDataset(name, url_fn, dates=to_download, url_suffixes=url_suffixes)
+
+
+BID_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Datasets/Wholesale/'
+                   'BidsAndOffers/Bids')
+BID_DATA_START_ = (2012, 12, 13)
+
+def UpdateBids():
+    url_fn = MakeDayUrlFn(BID_URL_PREFIX_, 'Bids')
+    UpdateDataset('Bids', url_fn, BID_DATA_START_)
+
+
+FINAL_PRICE_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
+                           'Datasets/Final_pricing/Final_prices')
+FINAL_PRICE_START_ = (2010, 1)
+
+def UpdateFinalPrices():
+    url_fn = MakeMonthUrlFn(FINAL_PRICE_URL_PREFIX_, 'Final_prices')
+    UpdateDataset('FinalPrices', url_fn, FINAL_PRICE_START_)
+
+
+LGP_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
+                   'Datasets/Final_pricing/Load_Generation_Price')
+LGP_START_ = (2013, 1, 1)
 
 def UpdateLGP():
-    day_range = DayRange(LGP_START_, Today())
-    all_days = set(day_range[:-2])
-    current_days = set(GetCurrent(LGP_DIR_))
-    to_download = sorted(list(all_days - current_days))
-    print('Downloading %d new LoadGenerationPrice files' % len(to_download))
-    DownloadLGP(to_download)
+    url_fn = MakeDayUrlFn(LGP_URL_PREFIX_, 'Load_Generation_Price')
+    UpdateDataset('LoadGenerationPrice', url_fn, LGP_START_,
+                  url_suffixes=EXTENDED_URL_SUFFIXES_)
 
 
-OFFERS_DIR_ = 'DANZEM/data/Offers'
-OFFERS_URL_PREFIX_ = 'https://www.emi.ea.govt.nz/Wholesale/Datasets/BidsAndOffers/Offers'
+OFFERS_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
+                      'Datasets/BidsAndOffers/Offers')
 OFFERS_START_ = (2013, 1, 1)
 
-def DownloadOffers(offer_files):
-    for year, month, day in offer_files:
-        url = '%s/%d/%d%02d%02d_Offers.csv' % (
-                OFFERS_URL_PREFIX_, year, year, month, day)
-        file_path = '%s/%d%02d%02d.csv' % (OFFERS_DIR_, year, month, day)
-        DownloadCSV(url, file_path)
-
-
 def UpdateOffers():
-    day_range = DayRange(OFFERS_START_, Today())
-    all_days = set(day_range[:-2])
-    current_days = set(GetCurrent(OFFERS_DIR_))
-    to_download = sorted(list(all_days - current_days))
-    print('Downloading %d new offer files' % len(to_download))
-    DownloadOffers(to_download)
+    url_fn = MakeDayUrlFn(OFFERS_URL_PREFIX_, 'Offers')
+    UpdateDataset('Offers', url_fn, OFFERS_START_)
+
+
+CLEARED_OFFERS_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
+                              'Datasets/Final_pricing/Cleared_Offers')
+CLEARED_OFFERS_START_ = OFFERS_START_
+
+def UpdateClearedOffers():
+    url_fn = MakeDayUrlFn(CLEARED_OFFERS_URL_PREFIX_, 'Cleared_Offers')
+    UpdateDataset('ClearedOffers', url_fn, CLEARED_OFFERS_START_,
+                  url_suffixes=EXTENDED_URL_SUFFIXES_)
+
+
+GENERATION_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
+                          'Datasets/Generation/Generation_MD')
+GENERATION_START_ = (2013, 1)
+
+def UpdateGeneration():
+    url_fn = MakeMonthUrlFn(GENERATION_URL_PREFIX_, 'Generation_MD')
+    UpdateDataset('Generation', url_fn, GENERATION_START_)
 
 
 def Update():
@@ -162,7 +199,8 @@ def Update():
     UpdateOffers()
     UpdateLGP()
     UpdateFinalPrices()
-
+    UpdateClearedOffers()
+    UpdateGeneration()
 
 if __name__ == '__main__':
     Update()
