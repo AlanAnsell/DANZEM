@@ -12,7 +12,11 @@ import datetime
 import pytz
 from calendar import monthrange
 
-tz = pytz.timezone('Pacific/Auckland')
+NZST = pytz.timezone('Pacific/Auckland')
+UTC = pytz.timezone('UTC')
+DT_FORMAT = '%d/%m/%Y %H:%M:%S'
+
+TPID = 'tpid'
 
 _HEADER_DATE_TIME = 'DateTime'
 
@@ -39,36 +43,76 @@ for hour_num in range(24):
 
 def GetStructTime(year, month, day):
     d = datetime.datetime(year, month, day)
-    return tz.localize(d).timetuple()
+    return NZST.localize(d).timetuple()
 
 
-def DSTBegins(year, month, day):
-    today = datetime.date(year, month, day)
+def TodayAndTomorrow(year, month, day):
+    today = datetime.datetime(year, month, day)
     tomorrow = today + datetime.timedelta(1)
-    today_dt = GetStructTime(year, month, day)
-    tomorrow_dt = GetStructTime(tomorrow.year, tomorrow.month, tomorrow.day)
-    return (today_dt.tm_isdst == 0 and tomorrow_dt.tm_isdst == 1)
+    today = NZST.localize(today)
+    tomorrow = NZST.localize(tomorrow)
+    return today, tomorrow
 
 
-def DSTEnds(year, month, day):
-    today = datetime.date(year, month, day)
-    tomorrow = today + datetime.timedelta(1)
-    today_dt = GetStructTime(year, month, day)
-    tomorrow_dt = GetStructTime(tomorrow.year, tomorrow.month, tomorrow.day)
-    return (today_dt.tm_isdst == 1 and tomorrow_dt.tm_isdst == 0)
+def DSTBegins(year=None, month=None, day=None, today=None, tomorrow=None):
+    if today is None:
+        today, tomorrow = TodayAndTomorrow(year, month, day)
+    return today.dst() < tomorrow.dst()
+
+
+def DSTEnds(year=None, month=None, day=None, today=None, tomorrow=None):
+    if today is None:
+        today, tomorrow = TodayAndTomorrow(year, month, day)
+    return today.dst() > tomorrow.dst()
 
 
 def NumTPs(year, month, day):
-    today = datetime.date(year, month, day)
-    tomorrow = today + datetime.timedelta(1)
-    today_dt = GetStructTime(year, month, day)
-    tomorrow_dt = GetStructTime(tomorrow.year, tomorrow.month, tomorrow.day)
-    if today_dt.tm_isdst == tomorrow_dt.tm_isdst:
-        return 48
-    if today_dt.tm_isdst == 1 and tomorrow_dt.tm_isdst == 0:
+    today, tomorrow = TodayAndTomorrow(year, month, day)
+    if DSTEnds(today=today, tomorrow=tomorrow):
         return 50
-    else:
+    elif DSTBegins(today=today, tomorrow=tomorrow):
         return 46
+    else:
+        return 48
+
+
+def TPIDToDateTime(tpid):
+    year, month, day, tp = (int(x) for x in tpid.split('_'))
+    today, tomorrow = TodayAndTomorrow(year, month, day)
+    fold = 0
+    if DSTEnds(today=today, tomorrow=tomorrow):
+        if tp <= 6:
+            is_dst = True
+            hour = (tp - 1) // 2
+            minute = 30 * ((tp - 1) % 2)
+        else:
+            is_dst=False
+            fold = 1
+            hour = (tp - 3) // 2
+            minute = 30 * ((tp - 3) % 2)
+    elif DSTBegins(today=today, tomorrow=tomorrow):
+        if tp <= 4:
+            is_dst = False
+            hour = (tp - 1) // 2
+            minute = 30 * ((tp - 1) % 2)
+        else:
+            is_dst = True
+            hour = (tp + 1) // 2
+            minute = 30 * ((tp + 1) % 2)
+    else:
+        is_dst = None
+        hour = (tp - 1) // 2
+        minute = 30 * ((tp - 1) % 2)
+       
+    #print('%d:%02d %d' % (hour, minute, fold))
+
+    dt = datetime.datetime(year, month, day, hour=hour, minute=minute)
+    dt = NZST.localize(dt, is_dst=is_dst)
+    #dt.fold = fold
+
+    return dt
+    #return datetime.datetime(year, month, day, hour=hour, minute=minute,
+    #                         tzinfo=NZST, fold=fold)
 
 
 def GenerateTPIDs(start, end):
@@ -112,11 +156,11 @@ def GenerateTPIDs(start, end):
     return ['%d_%02d_%02d_%02d' % ymdtp for ymdtp in ymdtps]
 
 
-def MakeTime(date_, tp):
-    date = str(date)
-    year = int(date[:4])
-    month = int(date[4:6])
-    day = int(date[6:])
+#def MakeTime(date_, tp):
+#    date = str(date)
+#    year = int(date[:4])
+#    month = int(date[4:6])
+#    day = int(date[6:])
 
 
 def _IsValidDateTimeString(s):
@@ -178,101 +222,41 @@ def _LoadHolidays():
     return national_holidays
 
 
-def GetPriceDF(node, year):
-    file_path = 'Data/Prices/Nodes/%s/all_prices_%d.csv' % (node, year)
-    data = pd.read_csv(file_path)
-    data = data[data[_HEADER_DATE_TIME].apply(_IsValidDateTimeString)]
-    date_time = data[_HEADER_DATE_TIME]
-    timestamp = date_time.apply(_TimestampFromString)
-    time_period = date_time.apply(_TimeStringToTimePeriod)
-    localtime = timestamp.apply(lambda t: time.localtime(t))
-    year = localtime.apply(lambda t: t.tm_year)
-    month = localtime.apply(lambda t: t.tm_mon)
-    day_of_month = localtime.apply(lambda t: t.tm_mday)
-    data[TP_ID] = ['%d_%02d_%02d_%02d' % (year[i],
-                                          month[i],
-                                          day_of_month[i],
-                                          time_period[i])
-                    for i in data.index]
-    data['price'] = data[_HEADER_PRICE]
-    data.set_index(TP_ID, inplace=True)
-    return data[['price']]
+class InvalidDateException(Exception):
+    pass
+
+DATE_SEPARATORS_ = ['/', '-']
+
+def DateTupleFromStr(date):
+    parts = None
+    for sep in DATE_SEPARATORS_:
+        split = date.split(sep)
+        if len(split) == 3:
+            parts = split
+            break
+
+    if parts is None:
+        raise InvalidDateException(date)
+
+    first_number = int(parts[0])
+    if first_number <= 31:
+        parts.reverse()
+
+    return (int(parts[0]), int(parts[1]), int(parts[2]))
 
 
-def LoadOtahuhu():
-    years = []
-    for year in range(2004, 2017):
-        file_path = 'Data/Prices/Otahuhu/otahuhu_node_results_%d.csv' % year
-        data = pd.read_csv(file_path)
-        data = data[data['Node'] == _OTAHUHU_MAIN]
-        years.append(data)
-    otahuhu = pd.concat(years)
-    holidays = _LoadHolidays()
-    return _Processed(otahuhu, holidays)
+def MakeTPID(year, month, day, tp):
+    return '%d_%02d_%02d_%02d' % (year, month, day, tp)
 
 
-def _BinaryFeatureMatrix(feature, name):
-    values = feature.unique()
-    matrix = pd.DataFrame()
-    for value in values:
-        column_name = '%s_%s' % (name, str(value))
-        matrix[column_name] = feature.apply(lambda x: float(x == value))
-    return matrix
+def MakeTPIDSeries(date_series, tp_series):
+    make_date_str = lambda d: '%d_%02d_%02d' % DateTupleFromStr(d)
+    date_str_series = date_series.apply(make_date_str)
+    tp_str_series = tp_series.apply(lambda tp: '%02d' % tp)
+    return date_str_series + '_' + tp_str_series
 
 
-def RollExamples(examples, prev=48, step=8, n_steps=48):
-    sequences = []
-    for i in examples.index[prev:]:
-        range_end = i - prev
-        range_start = max(range_end - step * n_steps, examples.index[0] + (i - examples.index[0]) % step)
-        indices = range(range_start, range_end + 1, step)
-        sequence = examples.loc[indices]
-        sequence['id'] = examples['id'][i]
-        sequences.append(sequence)
-    return pd.concat(sequences, ignore_index=True)
+def AddTPIDSeries(df, date_series_name, tp_series_name):
+    df[TPID] = MakeTPIDSeries(df[date_series_name], df[tp_series_name])
+    df.set_index(TPID, inplace=True)
 
-
-def GetExamples(data, day_ago_price=False):
-    targets = data[PRICE]
-    time_period_mat = _BinaryFeatureMatrix(data[TIME_PERIOD], TIME_PERIOD)
-    month_mat = _BinaryFeatureMatrix(data[MONTH], MONTH)
-    day_of_week_mat = _BinaryFeatureMatrix(data[DAY_OF_WEEK], DAY_OF_WEEK)
-    examples = pd.concat([time_period_mat, month_mat, day_of_week_mat], axis=1)
-    examples[IS_NATIONAL_HOLIDAY] = data[IS_NATIONAL_HOLIDAY]
-    if day_ago_price:
-        price_at_time_period = {
-                (data[DAY_INDEX][i],
-                 data[TIME_PERIOD][i]): data[PRICE][i]
-                for i in data.index}
-        has_day_ago_price = [
-                (data[DAY_INDEX][i] - 1,
-                 data[TIME_PERIOD][i]) in price_at_time_period
-                for i in data.index]
-        examples = examples[has_day_ago_price]
-        targets = targets[has_day_ago_price]
-        examples[DAY_AGO_PRICE] = [
-                price_at_time_period[
-                    (data[DAY_INDEX][i] - 1,
-                     data[TIME_PERIOD][i])]
-                for i in examples.index]
-    return examples, targets
-
-if __name__ == '__main__':
-    otahuhu = LoadOtahuhu()
-    # distribution_sample = np.random.choice(otahuhu[PRICE], size=100000, replace=False)
-    prices = otahuhu[PRICE][otahuhu[PRICE] < 500.0]
-    uniform_price_transformation = UniformTransformation(prices, n_partitions=100)
-    #print(uniform_price_transformation.quantiles)
-    uniform_prices = [uniform_price_transformation.transform(x) for x in prices]
-    #plt.hist(uniform_prices, bins=50)
-    #plt.show()
-    inverse_transformed_prices = [uniform_price_transformation.inverse_transform(y)
-                                  for y in uniform_prices]
-    fig, ax = plt.subplots(nrows=1, ncols=2, sharey=True)
-
-    ax[0].hist(prices, bins=50)
-    ax[1].hist(inverse_transformed_prices, bins=50)
-    plt.show()
-
-
-    

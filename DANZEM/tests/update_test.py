@@ -1,5 +1,5 @@
 import unittest
-from ..src import update
+from .. import update
 
 
 class TestUpdate(unittest.TestCase):

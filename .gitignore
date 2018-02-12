@@ -1,0 +1,9 @@
+**.ipynb_checkpoints/
+**.swp
+**__pycache__/
+DANZEM/data/Bids/
+DANZEM/data/FinalPrices/
+DANZEM/data/LoadGenerationPrice/
+DANZEM/data/Offers/
+DANZEM/data/test.csv
+
