@@ -49,5 +49,13 @@ def GetLatestOffers(df, minutes_before=0, wind=False):
                        'Trader', 'Band']).first()
 
 
-    def GetStacks(year, month, day, minutes_before=0, wind=False):
-        pass
+def GetStacks(year, month, day, minutes_before=0, wind=False):
+    #ym = (year, month)
+    #ymd = (year, month, day)
+    
+    #offer_df = data.GetOfferFile(ymd)
+    #offered_stacks = GetLastestOffers(offer_df,
+    #                                  minutes_before=minutes_before,
+    #                                  wind=wind)
+    pass
+    

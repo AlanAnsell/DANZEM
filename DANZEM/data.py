@@ -1,12 +1,8 @@
-"""Functions for loading and processing training data."""
 import numpy as np
 import pandas as pd
-from matplotlib import dates
-from matplotlib import pyplot as plt
-import seaborn as sns
 
-import bisect
-import math
+#import bisect
+#import math
 import time
 import datetime
 import pytz
@@ -18,27 +14,85 @@ DT_FORMAT = '%d/%m/%Y %H:%M:%S'
 
 TPID = 'tpid'
 
-_HEADER_DATE_TIME = 'DateTime'
+DATA_BASE_DIR_ = 'DANZEM/data'
+BIDS_DIR_ = '%s/Bids' % DATA_BASE_DIR_
+FINAL_PRICE_DIR_ = '%s/FinalPrices' % DATA_BASE_DIR_
+LGP_DIR_ = '%s/LoadGenerationPrice' % DATA_BASE_DIR_
+OFFERS_DIR_ = '%s/Offers' % DATA_BASE_DIR_
+CLEARED_OFFERS_DIR_ = '%s/ClearedOffers' % DATA_BASE_DIR_
+GENERATION_DIR_ = '%s/Generation' % DATA_BASE_DIR_
 
-PRICE = 'price'
-TIME_PERIOD = 'time_period'
-YEAR = 'year'
-MONTH = 'month'
-DAY_OF_WEEK = 'day_of_week'
-IS_NATIONAL_HOLIDAY = 'is_national_holiday'
-DAY_INDEX = 'day_index'
-DAY_AGO_PRICE = 'day_ago_price'
-TP_ID = 'id'
 
-_TIME_TO_TIME_PERIOD = {}
-_TIME_PERIOD_TO_TIME = []
+def Today():
+    ts = time.localtime()
+    return (ts.tm_year, ts.tm_mon, ts.tm_mday) 
 
-minutes = ['00', '30']
-for hour_num in range(24):
-    for minute_num in range(2):
-        time_str = '%02d:%s' % (hour_num, minutes[minute_num])
-        _TIME_TO_TIME_PERIOD[time_str] = 2 * hour_num + minute_num + 1
-        _TIME_PERIOD_TO_TIME.append(time_str)
+
+def MonthRange(first, last):
+    years = list(range(first[0], last[0] + 1))
+    first_month = {year: 1 for year in years}
+    first_month[first[0]] = first[1]
+    last_month = {year: 12 for year in years}
+    last_month[last[0]] = last[1]
+    return [(year, month)
+            for year in years
+            for month in range(first_month[year], last_month[year] + 1)]
+
+
+def DayRange(first, last):
+    yms = MonthRange(first[:2], last[:2])
+    first_day = {ym: 1 for ym in yms}
+    first_day[yms[0]] = first[2]
+    last_day = {ym: monthrange(ym[0], ym[1])[1] for ym in yms}
+    last_day[yms[-1]] = last[2]
+
+    return [(ym[0], ym[1], day)
+            for ym in yms
+            for day in range(first_day[ym], last_day[ym] + 1)]
+
+
+def FileNameFromDateTuple(date):
+    if len(date) == 2:
+        return '%d%02d' % (date[0], date[1])
+    else:
+        return '%d%02d%02d' % (date[0], date[1], date[2])
+
+
+def DateStrFromDateTuple(date):
+    if len(date) == 2:
+        return '%d/%02d' % (date[0], date[1])
+    else:
+        return '%d/%02d/%02d' % (date[0], date[1], date[2])
+
+
+def GetBidFile(ymd):
+    file_path = '%s/%s.csv' % (BIDS_DIR_, FileNameFromTuple(ymd))
+    return pd.read_csv(file_path)
+
+
+def GetFinalPriceFile(ym):
+    file_path = '%s/%s.csv' % (FINAL_PRICE_DIR_, FileNameFromTuple(ym))
+    return pd.read_csv(file_path)
+
+
+def GetLGPFile(ymd):
+    file_path = '%s/%s.csv' % (LGP_DIR_, FileNameFromTuple(ymd))
+    return pd.read_csv(file_path)
+
+
+def GetOfferFile(ymd):
+    file_path = '%s/%s.csv' % (OFFERS_DIR_, FileNameFromTuple(ymd))
+    return pd.read_csv(file_path)
+
+
+def GetClearedOffersFile(ymd):
+    file_path = '%s/%s.csv' % (CLEARED_OFFERS_DIR_, FileNameFromTuple(ymd))
+    return pd.read_csv(file_path)
+
+
+def GetGenerationFile(ym):
+    file_path = '%s/%s.csv' % (GENERATION_DIR_, FileNameFromTuple(ym))
+    return pd.read_csv(file_path)
 
 
 def GetStructTime(year, month, day):
@@ -79,7 +133,7 @@ def NumTPs(year, month, day):
 def TPIDToDateTime(tpid):
     year, month, day, tp = (int(x) for x in tpid.split('_'))
     today, tomorrow = TodayAndTomorrow(year, month, day)
-    fold = 0
+    is_dst = None
     if DSTEnds(today=today, tomorrow=tomorrow):
         if tp <= 6:
             is_dst = True
@@ -100,19 +154,13 @@ def TPIDToDateTime(tpid):
             hour = (tp + 1) // 2
             minute = 30 * ((tp + 1) % 2)
     else:
-        is_dst = None
         hour = (tp - 1) // 2
         minute = 30 * ((tp - 1) % 2)
        
-    #print('%d:%02d %d' % (hour, minute, fold))
-
     dt = datetime.datetime(year, month, day, hour=hour, minute=minute)
     dt = NZST.localize(dt, is_dst=is_dst)
-    #dt.fold = fold
 
     return dt
-    #return datetime.datetime(year, month, day, hour=hour, minute=minute,
-    #                         tzinfo=NZST, fold=fold)
 
 
 def GenerateTPIDs(start, end):
@@ -156,61 +204,6 @@ def GenerateTPIDs(start, end):
     return ['%d_%02d_%02d_%02d' % ymdtp for ymdtp in ymdtps]
 
 
-#def MakeTime(date_, tp):
-#    date = str(date)
-#    year = int(date[:4])
-#    month = int(date[4:6])
-#    day = int(date[6:])
-
-
-def _IsValidDateTimeString(s):
-    return ';' not in s # check for a typo which occurs in some time strings
-
-
-def _TimestampFromString(s):
-    return time.mktime(time.strptime(s, '%d-%b-%Y %H:%M'))
-
-def _TimestampFromHolidayDateString(s):
-    return time.mktime(time.strptime(s, '%d/%m/%Y'))
-
-def _TimestampToDayIndex(timestamp):
-    dt = datetime.datetime.fromtimestamp(timestamp)
-    return int(dates.date2num(dt))
-
-def _TimestampToNZDay(timestamp):
-    return time.strftime('%d/%m/%Y', time.localtime(timestamp))
-
-def _TimeStringToTimePeriod(s):
-    return _TIME_TO_TIME_PERIOD[s[-5:]]
-
-
-def _Processed(data, holidays):
-    data = data[data[_HEADER_DATE_TIME].apply(_IsValidDateTimeString)]
-    examples = pd.DataFrame()
-    examples[PRICE] = data[_HEADER_PRICE]
-    date_time = data[_HEADER_DATE_TIME]
-    #date_time = data[_HEADER_DATE_TIME].apply(_FixDateTimeString)
-    timestamp = date_time.apply(_TimestampFromString)
-    examples[DAY_INDEX] = timestamp.apply(_TimestampToDayIndex)
-    examples[TIME_PERIOD] = date_time.apply(_TimeStringToTimePeriod)
-    localtime = timestamp.apply(lambda t: time.localtime(t))
-    examples[YEAR] = localtime.apply(lambda t: t.tm_year)
-    examples[MONTH] = localtime.apply(lambda t: t.tm_mon)
-    examples[DAY_OF_WEEK] = localtime.apply(lambda t: t.tm_wday)
-    nz_day = timestamp.apply(_TimestampToNZDay)
-    examples[IS_NATIONAL_HOLIDAY] = nz_day.apply(
-            lambda d: float(d in holidays))
-    examples.reset_index(drop=True, inplace=True)
-    day_of_month = localtime.apply(lambda t: t.tm_mday)
-    day_of_month.reset_index(drop=True, inplace=True)
-    examples[TP_ID] = ['%d_%02d_%02d_%02d' % (examples[YEAR][i],
-                                              examples[MONTH][i],
-                                              day_of_month[i],
-                                              examples[TIME_PERIOD][i])
-                       for i in examples.index]
-    return examples 
-
-
 def _LoadHolidays():
     holidays = pd.read_csv('Data/Holidays/holidays_1980_2020.csv')
     national_holidays = set([])
@@ -224,6 +217,7 @@ def _LoadHolidays():
 
 class InvalidDateException(Exception):
     pass
+
 
 DATE_SEPARATORS_ = ['/', '-']
 

@@ -4,13 +4,9 @@ import requests
 import time
 
 from os import listdir
-
 from calendar import monthrange
 
-
-def Today():
-    ts = time.localtime()
-    return (ts.tm_year, ts.tm_mon, ts.tm_mday) 
+from . import data
 
 
 def DownloadCSV(url, file_path, warn=True):
@@ -24,29 +20,6 @@ def DownloadCSV(url, file_path, warn=True):
     with open(file_path, 'w') as f:
         f.write(response.text.replace('\r', ''))
     return True
-
-
-def MonthRange(first, last):
-    years = list(range(first[0], last[0] + 1))
-    first_month = {year: 1 for year in years}
-    first_month[first[0]] = first[1]
-    last_month = {year: 12 for year in years}
-    last_month[last[0]] = last[1]
-    return [(year, month)
-            for year in years
-            for month in range(first_month[year], last_month[year] + 1)]
-
-
-def DayRange(first, last):
-    yms = MonthRange(first[:2], last[:2])
-    first_day = {ym: 1 for ym in yms}
-    first_day[yms[0]] = first[2]
-    last_day = {ym: monthrange(ym[0], ym[1])[1] for ym in yms}
-    last_day[yms[-1]] = last[2]
-
-    return [(ym[0], ym[1], day)
-            for ym in yms
-            for day in range(first_day[ym], last_day[ym] + 1)]
 
 
 def GetFileDates(file_name):
@@ -66,30 +39,15 @@ def GetCurrent(dir_path):
     return days_covered
 
 
-def FileNameFromDateTuple(date):
-    if len(date) == 2:
-        return '%d%02d' % (date[0], date[1])
-    else:
-        return '%d%02d%02d' % (date[0], date[1], date[2])
-
-
-def DateStrFromDateTuple(date):
-    if len(date) == 2:
-        return '%d/%02d' % (date[0], date[1])
-    else:
-        return '%d/%02d/%02d' % (date[0], date[1], date[2])
-
-
-DATA_BASE_DIR_ = 'DANZEM/data'
 STANDARD_URL_SUFFIX_ = ['.csv']
 EXTENDED_URL_SUFFIXES_ = [
         '.csv', '_F.csv', 'x_F.csv', 'x.csv', '_I.csv', 'x_I.csv']
 
 
-def DownloadDataset(name, url_fn, dates=[], url_suffixes=STANDARD_URL_SUFFIX_):
-    file_dir = '%s/%s' % (DATA_BASE_DIR_, name)
+def DownloadDataset(name, file_dir, url_fn, dates=[],
+                    url_suffixes=STANDARD_URL_SUFFIX_):
     for date in dates:
-        file_name = FileNameFromDateTuple(date)
+        file_name = data.FileNameFromDateTuple(date)
         file_path = '%s/%s.csv' % (file_dir, file_name)
         url_base = url_fn(date)
         found = False
@@ -99,7 +57,7 @@ def DownloadDataset(name, url_fn, dates=[], url_suffixes=STANDARD_URL_SUFFIX_):
                 found = True
                 break
         if not found:
-            date_str = DateStrFromDateTuple(date)
+            date_str = data.DateStrFromDateTuple(date)
             print('**** Warning: could not find any %s file for %s' % (
                 name, date_str))
 
@@ -119,23 +77,20 @@ def MakeMonthUrlFn(url_prefix, after_date):
 
 def DateRangeToToday(date):
     if len(date) == 2:
-        return MonthRange(date, Today()[:2])
+        return data.MonthRange(date, data.Today()[:2])
     else:
-        return DayRange(date, Today())
+        return data.DayRange(date, data.Today())
 
 
-def UpdateDataset(name, url_fn, start_date, hr_name=None,
+def UpdateDataset(name, file_dir, url_fn, start_date,
                   url_suffixes=STANDARD_URL_SUFFIX_):
-    if hr_name is None:
-        hr_name = name
-
     date_range = DateRangeToToday(start_date)
     available_dates = set(date_range[:-2])
-    file_dir = '%s/%s' % (DATA_BASE_DIR_, name)
     stored_dates = set(GetCurrent(file_dir))
     to_download = sorted(list(available_dates - stored_dates))
-    print('Downloading %d new %s files' % (len(to_download), hr_name))
-    DownloadDataset(name, url_fn, dates=to_download, url_suffixes=url_suffixes)
+    print('Downloading %d new %s files' % (len(to_download), name))
+    DownloadDataset(name, file_dir, url_fn, dates=to_download,
+                    url_suffixes=url_suffixes)
 
 
 BID_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Datasets/Wholesale/'
@@ -144,7 +99,7 @@ BID_DATA_START_ = (2012, 12, 13)
 
 def UpdateBids():
     url_fn = MakeDayUrlFn(BID_URL_PREFIX_, 'Bids')
-    UpdateDataset('Bids', url_fn, BID_DATA_START_)
+    UpdateDataset('Bids', data.BIDS_DIR_, url_fn, BID_DATA_START_)
 
 
 FINAL_PRICE_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -153,7 +108,8 @@ FINAL_PRICE_START_ = (2010, 1)
 
 def UpdateFinalPrices():
     url_fn = MakeMonthUrlFn(FINAL_PRICE_URL_PREFIX_, 'Final_prices')
-    UpdateDataset('FinalPrices', url_fn, FINAL_PRICE_START_)
+    UpdateDataset('FinalPrices', data.FINAL_PRICE_DIR_,
+                  url_fn, FINAL_PRICE_START_)
 
 
 LGP_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -162,8 +118,8 @@ LGP_START_ = (2013, 1, 1)
 
 def UpdateLGP():
     url_fn = MakeDayUrlFn(LGP_URL_PREFIX_, 'Load_Generation_Price')
-    UpdateDataset('LoadGenerationPrice', url_fn, LGP_START_,
-                  url_suffixes=EXTENDED_URL_SUFFIXES_)
+    UpdateDataset('LoadGenerationPrice', data.LGP_DIR_, url_fn,
+                  LGP_START_, url_suffixes=EXTENDED_URL_SUFFIXES_)
 
 
 OFFERS_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -172,7 +128,7 @@ OFFERS_START_ = (2013, 1, 1)
 
 def UpdateOffers():
     url_fn = MakeDayUrlFn(OFFERS_URL_PREFIX_, 'Offers')
-    UpdateDataset('Offers', url_fn, OFFERS_START_)
+    UpdateDataset('Offers', data.OFFERS_DIR_, url_fn, OFFERS_START_)
 
 
 CLEARED_OFFERS_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -181,8 +137,8 @@ CLEARED_OFFERS_START_ = OFFERS_START_
 
 def UpdateClearedOffers():
     url_fn = MakeDayUrlFn(CLEARED_OFFERS_URL_PREFIX_, 'Cleared_Offers')
-    UpdateDataset('ClearedOffers', url_fn, CLEARED_OFFERS_START_,
-                  url_suffixes=EXTENDED_URL_SUFFIXES_)
+    UpdateDataset('ClearedOffers', data.CLEARED_OFFERS_DIR_, url_fn,
+                  CLEARED_OFFERS_START_, url_suffixes=EXTENDED_URL_SUFFIXES_)
 
 
 GENERATION_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -191,7 +147,8 @@ GENERATION_START_ = (2013, 1)
 
 def UpdateGeneration():
     url_fn = MakeMonthUrlFn(GENERATION_URL_PREFIX_, 'Generation_MD')
-    UpdateDataset('Generation', url_fn, GENERATION_START_)
+    UpdateDataset('Generation', data.GENERATION_DIR_, url_fn,
+                  GENERATION_START_)
 
 
 def Update():
