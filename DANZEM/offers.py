@@ -50,12 +50,27 @@ def GetLatestOffers(df, minutes_before=0, wind=False):
 
 
 def GetStacks(year, month, day, minutes_before=0, wind=False):
-    #ym = (year, month)
-    #ymd = (year, month, day)
+    ym = (year, month)
+    ymd = (year, month, day)
     
-    #offer_df = data.GetOfferFile(ymd)
-    #offered_stacks = GetLastestOffers(offer_df,
-    #                                  minutes_before=minutes_before,
-    #                                  wind=wind)
-    pass
+    offer_df = data.GetOfferFile(ymd)
+    offered_stacks = GetLatestOffers(offer_df,
+                                     wind=wind,
+                                     minutes_before=minutes_before)
+    offered_stacks.reset_index(inplace=True)
+    #get_node = lambda x: x[:3]
+    #offered_stacks['Node'] = offered_stacks['PointOfConnection'].apply(
+    #        get_node)
+    #offered_stacks.sort_values(['tpid', 'Node', 'DollarsPerMegawattHour'],
+    #                           inplace=True)
+    #offered_stacks.set_index(['tpid', 'Node'],
+    #                         inplace=True)
+    return offered_stacks
+    #lgp_df = data.GetLGPFile(ymd)
+    #data.AddTPIDSeries(lgp_df, 'Date', 'TradingPeriod', as_index=False)
+    #lgp_df.sort_values(['tpid', 'PointOfConnection'], inplace=True)
+    #lgp_df['Node'] = lgp_df['PointOfConnection'].apply(get_node)
+    #grouped_lgp = lgp_df.groupby(['tpid', 'Node']).sum()
+
+
     

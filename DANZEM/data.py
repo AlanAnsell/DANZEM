@@ -23,6 +23,10 @@ CLEARED_OFFERS_DIR_ = '%s/ClearedOffers' % DATA_BASE_DIR_
 GENERATION_DIR_ = '%s/Generation' % DATA_BASE_DIR_
 
 
+def SetDir(dir_):
+    DATA_BASE_DIR_ = dir_
+
+
 def Today():
     ts = time.localtime()
     return (ts.tm_year, ts.tm_mon, ts.tm_mday) 
@@ -66,32 +70,32 @@ def DateStrFromDateTuple(date):
 
 
 def GetBidFile(ymd):
-    file_path = '%s/%s.csv' % (BIDS_DIR_, FileNameFromTuple(ymd))
+    file_path = '%s/%s.csv' % (BIDS_DIR_, FileNameFromDateTuple(ymd))
     return pd.read_csv(file_path)
 
 
 def GetFinalPriceFile(ym):
-    file_path = '%s/%s.csv' % (FINAL_PRICE_DIR_, FileNameFromTuple(ym))
+    file_path = '%s/%s.csv' % (FINAL_PRICE_DIR_, FileNameFromDateTuple(ym))
     return pd.read_csv(file_path)
 
 
 def GetLGPFile(ymd):
-    file_path = '%s/%s.csv' % (LGP_DIR_, FileNameFromTuple(ymd))
+    file_path = '%s/%s.csv' % (LGP_DIR_, FileNameFromDateTuple(ymd))
     return pd.read_csv(file_path)
 
 
 def GetOfferFile(ymd):
-    file_path = '%s/%s.csv' % (OFFERS_DIR_, FileNameFromTuple(ymd))
+    file_path = '%s/%s.csv' % (OFFERS_DIR_, FileNameFromDateTuple(ymd))
     return pd.read_csv(file_path)
 
 
 def GetClearedOffersFile(ymd):
-    file_path = '%s/%s.csv' % (CLEARED_OFFERS_DIR_, FileNameFromTuple(ymd))
+    file_path = '%s/%s.csv' % (CLEARED_OFFERS_DIR_, FileNameFromDateTuple(ymd))
     return pd.read_csv(file_path)
 
 
 def GetGenerationFile(ym):
-    file_path = '%s/%s.csv' % (GENERATION_DIR_, FileNameFromTuple(ym))
+    file_path = '%s/%s.csv' % (GENERATION_DIR_, FileNameFromDateTuple(ym))
     return pd.read_csv(file_path)
 
 
@@ -250,7 +254,8 @@ def MakeTPIDSeries(date_series, tp_series):
     return date_str_series + '_' + tp_str_series
 
 
-def AddTPIDSeries(df, date_series_name, tp_series_name):
+def AddTPIDSeries(df, date_series_name, tp_series_name, as_index=True):
     df[TPID] = MakeTPIDSeries(df[date_series_name], df[tp_series_name])
-    df.set_index(TPID, inplace=True)
+    if as_index:
+        df.set_index(TPID, inplace=True)
 
