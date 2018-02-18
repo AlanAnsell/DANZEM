@@ -1,8 +1,13 @@
 import numpy as np
 import pandas as pd
 
+import os
 
-ISLANDS_PATH_ = 'DANZEM/data/Nodes/islands.csv'
+from . import utils
+
+NODES_DIR = os.path.join(utils.DATA_BASE_DIR, 'Nodes')
+
+ISLANDS_PATH_ = NODES_DIR + '/islands.csv'
 
 def GetIslandFn():
     islands_df = pd.read_csv(ISLANDS_PATH_, index_col=0)
@@ -15,7 +20,7 @@ def GetIslandFn():
     return Island
 
 
-WIND_NODES_PATH_ = 'DANZEM/Data/Nodes/wind_nodes.csv'
+WIND_NODES_PATH_ = NODES_DIR + 'wind_nodes.csv'
 
 def GetWindNodes():
     wind_nodes_df = pd.read_csv(WIND_NODES_PATH_)

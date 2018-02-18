@@ -6,7 +6,10 @@ import pandas as pd
 import time
 import datetime
 import pytz
+import os
 from calendar import monthrange
+
+from . import utils
 
 NZST = pytz.timezone('Pacific/Auckland')
 UTC = pytz.timezone('UTC')
@@ -14,17 +17,17 @@ DT_FORMAT = '%d/%m/%Y %H:%M:%S'
 
 TPID = 'tpid'
 
-DATA_BASE_DIR_ = 'DANZEM/data'
-BIDS_DIR_ = '%s/Bids' % DATA_BASE_DIR_
-FINAL_PRICE_DIR_ = '%s/FinalPrices' % DATA_BASE_DIR_
-LGP_DIR_ = '%s/LoadGenerationPrice' % DATA_BASE_DIR_
-OFFERS_DIR_ = '%s/Offers' % DATA_BASE_DIR_
-CLEARED_OFFERS_DIR_ = '%s/ClearedOffers' % DATA_BASE_DIR_
-GENERATION_DIR_ = '%s/Generation' % DATA_BASE_DIR_
+#DATA_BASE_DIR_ = 'DANZEM/data'
+BIDS_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'Bids')
+FINAL_PRICE_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'FinalPrices')
+LGP_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'LoadGenerationPrice')
+OFFERS_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'Offers')
+CLEARED_OFFERS_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'ClearedOffers')
+GENERATION_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'Generation')
 
 
-def SetDir(dir_):
-    DATA_BASE_DIR_ = dir_
+#def SetDir(dir_):
+#    DATA_BASE_DIR_ = dir_
 
 
 def Today():

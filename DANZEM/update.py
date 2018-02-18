@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import time
 
-from os import listdir
+import os
 from calendar import monthrange
 
 from . import data
@@ -32,7 +32,9 @@ def GetFileDates(file_name):
 
 
 def GetCurrent(dir_path):
-    csvs = [f for f in listdir(dir_path) if f.endswith('.csv')]
+    if not os.path.isdir(dir_path):
+        os.makedirs(dir_path)
+    csvs = [f for f in os.listdir(dir_path) if f.endswith('.csv')]
     days_covered = []
     for csv in csvs:
         days_covered += GetFileDates(csv)
@@ -46,6 +48,8 @@ EXTENDED_URL_SUFFIXES_ = [
 
 def DownloadDataset(name, file_dir, url_fn, dates=[],
                     url_suffixes=STANDARD_URL_SUFFIX_):
+    if not os.path.isdir(file_dir):
+        os.makedirs(file_dir)
     for date in dates:
         file_name = data.FileNameFromDateTuple(date)
         file_path = '%s/%s.csv' % (file_dir, file_name)

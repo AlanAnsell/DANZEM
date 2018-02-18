@@ -1,3 +1,8 @@
+import os
+
+DATA_BASE_DIR = os.path.join(os.path.dirname(__file__), 'data')
+
+
 def FastApply(series, fn, as_list=False):
     fn_map = {}
     for x in series:

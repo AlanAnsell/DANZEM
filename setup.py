@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='DANZEM',
-      version='0.2.2',
+      version='0.2.6',
       description='Data Analysis tools for the New Zealand Electricity Market',
       url='https://github.com/AlanAnsell/DANZEM',
       author='Alan Ansell',
