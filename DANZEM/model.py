@@ -3,214 +3,169 @@ import pandas as pd
 
 import datetime
 import random
+import os
+import tempfile
 
 from keras import models
+from keras import layers
+from keras import models
+from keras import initializers
+from keras import regularizers
 
+from sklearn import metrics
 from sklearn import model_selection
+
+from . import data
+
+
+SKLEARN = 'sklearn'
+KERAS = 'keras'
 
 
 def LossReduction(previous_loss, current_loss):
     return (previous_loss - current_loss) / previous_loss
 
 
-def train_model(X, y, model, ts_split=False, val_first=False, train_size=0.9, use_all_data=False, max_loss_stagnation_epochs=2):
-    if ts_split:
-        n_examples = X.shape[0]
-        n_train = round(n_examples * train_size)
-
-        if val_first:
-            val_X = X[:-n_train,:]
-            val_y = y[:-n_train]
-            train_X = X[-n_train:,:]
-            train_y = y[-n_train:]
-        else:
-            train_X = X[:n_train,:]
-            train_y = y[:n_train]
-            val_X = X[n_train:,:]
-            val_y = y[n_train:]
-    else:
-        train_X, val_X, train_y, val_y = model_selection.train_test_split(
-                X, y, train_size=train_size)
-    if use_all_data:
-        train_X = X
-        train_y = y
-
-    epoch = 1
-    previous_val_loss = 0
-    loss_stagnation_epochs = 0
-    train_loss = model.evaluate(train_X, train_y, verbose=0)[0]
-    val_loss = model.evaluate(val_X, val_y, verbose=0)[0]
-    print('Before epoch 1: training loss = %.5f, validation loss = %.5f' % (
-        train_loss, val_loss))
-    model.save('Models/tmp.h5')
-    best_loss = val_loss
-    while True:
-        history = model.fit(train_X, train_y, epochs=1, verbose=0)
-        train_loss = history.history['loss'][0]
-        val_loss = model.evaluate(val_X, val_y, verbose=0)[0]
-        print('Epoch %d: training loss = %.5f, validation loss = %.5f' % (
-            epoch, train_loss, val_loss))
-        if epoch > 1:
-            if LossReduction(previous_val_loss, val_loss) < 0.0001:
-                loss_stagnation_epochs += 1
-            else:
-                loss_stagnation_epochs = 0
-        if val_loss < best_loss:
-            best_loss = val_loss
-            model.save('Models/tmp.h5')
-        if loss_stagnation_epochs >= max_loss_stagnation_epochs:
-            break
-        previous_val_loss = val_loss
-        epoch += 1
+def Split(X, label_fn):
+    folds = {}
+    for i in X.index:
+        label = label_fn(i)
+        folds.setdefault(label, []).append(i)
+    return folds
     
-    return models.load_model('Models/tmp.h5')
+
+def SplitByYear(X):
+    return Split(X, data.GetYearStrFromTPID)
 
 
-def split_by_year(X):
-    folds = {}
-    for i in X.index:
-        year = i[:4]
-        if year in folds:
-            folds[year].append(i)
-        else:
-            folds[year] = [i]
-    return folds
+def SplitByMonth(X):
+    return Split(X, data.GetMonthStrFromTPID)
 
 
-def split_by_month(X):
-    folds = {}
-    for i in X.index:
-        month = i[:7]
-        if month in folds:
-            folds[month].append(i)
-        else:
-            folds[month] = [i]
-    return folds
+def SklearnTrainFn(model_fn, eval_fn, X, y, **kwargs):
+    model_ = model_fn(X)
+    model_.fit(X, y)
+    return model_, 0.0
 
 
-def split_by_4_months(X):
-    folds = {}
-    month_map = {1: '1-4', 2: '1-4', 3: '1-4', 4: '1-4',
-                 5: '5-8', 6: '5-8', 7: '5-8', 8: '5-8',
-                 9: '9-12', 10: '9-12', 11: '9-12', 12: '9-12'}
-    for i in X.index:
-        year = i[:4]
-        month = int(i[5:7])
-        fold_name = '%s_%s' % (year, month_map[month])
-        if fold_name in folds:
-            folds[fold_name].append(i)
-        else:
-            folds[fold_name] = [i]
-    return folds
-
-
-import random
-
-def default_train_single_model(model_fn, eval_fn, train_X, train_y, val_X, val_y, max_stagnation_epochs=2,
-        max_no_improvement_epochs=50, verbose=False):
+def KerasTrainFn(model_fn, eval_fn,
+                 train_X, train_y, val_X, val_y,
+                 max_val_stagnation_epochs=10,
+                 progress_check_epoch=5,
+                 progress_check_thresh=0.3,
+                 verbose=False,
+                 **kwargs):
+    model_ = model_fn(train_X)
     train_X = train_X.as_matrix()
     train_y = train_y.as_matrix()
     val_X = val_X.as_matrix()
     val_y = val_y.as_matrix()
-    model = model_fn(train_X)
     
-    epoch = 1
-    loss_stagnation_epochs = 0
-    
-    train_loss = eval_fn(model, train_X, train_y).loss
-    val_loss = eval_fn(model, val_X, val_y).loss
-    previous_val_loss = val_loss
-    previous_train_loss = train_loss
+    train_loss = eval_fn(model_, train_X, train_y, **kwargs).loss
+    val_loss = eval_fn(model_, val_X, val_y, **kwargs).loss
+    initial_val_loss = val_loss
     if verbose:
         print('Before epoch 1: training loss = %.5f, validation loss = %.5f' % (
             train_loss, val_loss))
+
+    model_file_dir = tempfile.mkdtemp()
+    model_file_path = os.path.join(model_file_dir, 'model.h5')
+    model_.save(model_file_path)
     
-    model_file_path = 'Models/tmp%d.h5' % random.randint(0, 1000)
-    model.save(model_file_path)
-    best_train_loss = train_loss
+    epoch = 1
+    val_stagnation_epochs = 0
     best_val_loss = val_loss
-    epochs_since_last_improvement = 0
     while True:
-        model.fit(train_X, train_y, epochs=1, verbose=0)
-        train_loss = eval_fn(model, train_X, train_y).loss
-        val_loss = eval_fn(model, val_X, val_y).loss
+        model_.fit(train_X, train_y, epochs=1, verbose=0)
+        train_loss = eval_fn(model_, train_X, train_y, **kwargs).loss
+        val_loss = eval_fn(model_, val_X, val_y, **kwargs).loss
         if verbose:
             print('Epoch %d: training loss = %.5f, validation loss = %.5f' % (
                 epoch, train_loss, val_loss))
-        if epoch == 1:
-            if LossReduction(previous_train_loss, train_loss) < 0.03:
-                return None, 0.0
-        else:
-            if train_loss < best_train_loss:
-                best_train_loss = train_loss
-                epochs_since_last_improvement = 0
-                if val_loss < best_val_loss:
-                    loss_stagnation_epochs = 0
-                else:
-                    loss_stagnation_epochs += 1
-            else:
-                epochs_since_last_improvement += 1
+        
         if val_loss < best_val_loss:
+            model_.save(model_file_path)
             best_val_loss = val_loss
-            model.save(model_file_path)
-        if (loss_stagnation_epochs >= max_stagnation_epochs or
-            epochs_since_last_improvement >= max_no_improvement_epochs):
+            val_stagnation_epochs = 0
+        else:
+            val_stagnation_epochs += 1
+       
+        if val_stagnation_epochs >= max_val_stagnation_epochs:
             break
-        #previous_val_loss = val_loss
-        #previous_train_loss = train_loss
+
+        if epoch == progress_check_epoch:
+            if (LossReduction(initial_val_loss, best_val_loss) <
+                    progress_check_thresh):
+                return None, 0.0
+        
         epoch += 1
     
-    return models.load_model(model_file_path), best_val_loss
+    best_model = models.load_model(model_file_path)
+    os.remove(model_file_path)
+    os.rmdir(model_file_dir)
+
+    return best_model, best_val_loss
 
 
-def default_val_split(X, y, train_size=0.8):
-    mdtp_buckets = {}
+def DefaultTrainValSplitFn(X, y, train_size=0.8, **kwargs):
+    day_buckets = {}
     for i in X.index:
-        parts = [int(x) for x in i.split('@')[0].split('_')]
-        dow = datetime.datetime(parts[0], parts[1], parts[2]).weekday()
-        mdtp_key = (parts[1], dow, parts[-1])
-        if mdtp_key in mdtp_buckets:
-            mdtp_buckets[mdtp_key].append(i)
-        else:
-            mdtp_buckets[mdtp_key] = [i]
+        day = data.GetDayStrFromTPID(i)
+        day_buckets.setdefault(day, []).append(i)
+
+    days = list(day_buckets)
+    random.shuffle(days)
+    val_req = round((1.0 - train_size) * X.shape[0])
+    val_tps = []
+    i = 0
+    while len(val_tps) < val_req and i < len(days):
+        val_tps += day_buckets[days[i]]
+        i += 1
+
+    val_tps = sorted(val_tps)
+    train_tps = sorted(list(set(X.index) - set(val_tps)))
+
+    return (X.loc[train_tps], y.loc[train_tps],
+            X.loc[val_tps], y.loc[val_tps])
+
+
+_DefaultSingleModelTrainFn = KerasTrainFn
+
+def DefaultTrainFn(model_fn, eval_fn, X, y,
+                   single_model_train_fn=None,
+                   train_val_split_fn=None,
+                   transform_fn=None,
+                   process_fn=None,
+                   separate_transform_for_val=False,
+                   n_models=1,
+                   verbose=False,
+                   **kwargs):
+
+    if not single_model_train_fn:
+        single_model_train_fn = _DefaultSingleModelTrainFn
+
+    if not train_val_split_fn:
+        train_val_split_fn = DefaultTrainValSplitFn
     
-    train_indices = []
-    val_indices = []
-    for index_list in mdtp_buckets.values():
-        random.shuffle(index_list)
-        n_train = round(len(index_list) * train_size)
-        train_indices += index_list[:n_train]
-        val_indices += index_list[n_train:]
-
-    train_indices = sorted(train_indices)
-    val_indices = sorted(val_indices)
-
-    return X.loc[train_indices], y.loc[train_indices], X.loc[val_indices], y.loc[val_indices]
-
-
-def default_train_fn(model_fn, eval_fn, X, y, process_fn=None, n_models=10, verbose=False, train_size=0.8, **kwargs):
-    
-    train_X, train_y, val_X, val_y = default_val_split(X, y, train_size)
-    #train_X, val_X, train_y, val_y = model_selection.train_test_split(X, y, train_size=0.8)
-    #train_size = 0.8
-    #n_train = round(train_size * X.shape[0])
-    #train_X = X.iloc[:n_train, :]
-    #train_y = y.iloc[:n_train]
-    #val_X = X.iloc[n_train:, :]
-    #val_y = y.iloc[n_train:]
-    if process_fn:
-        train_X, train_y, val_X, val_y = process_fn(train_X, train_y, val_X, val_y)
+    train_X, train_y, val_X, val_y = train_val_split_fn(X, y, **kwargs)
+    if transform_fn:
+        if separate_transform_for_val:
+            transform_fn = process_fn(train_X, train_y, **kwargs)
+        train_X, train_y = transform_fn(train_X, train_y)
+        val_X, val_y = transform_fn(val_X, val_y)
    
     best_model = None
     best_loss = 1e10
     n_successful_models = 0
     while n_successful_models < n_models:
-        model, val_loss = default_train_single_model(model_fn, eval_fn, train_X, train_y, val_X, val_y, verbose=verbose,
-                                                     **kwargs)
-        if model:
+        model_, val_loss = single_model_train_fn(
+                model_fn, eval_fn, train_X, train_y, val_X, val_y,
+                verbose=verbose,
+                **kwargs)
+        if model_:
             if val_loss < best_loss:
                 best_loss = val_loss
-                best_model = model
+                best_model = model_
             n_successful_models += 1
 
     if verbose:
@@ -228,15 +183,78 @@ class Result:
         self.metrics = metrics
 
 
-def eval_mae(model, X, y):
-    if X.__class__ == pd.DataFrame:
+_LOSS_FN_MAP = {'mae': metrics.mean_absolute_error,
+                'mse': metrics.mean_squared_error,
+                'accuracy': metrics.accuracy_score}
+
+_PROBA_LOSS_FN_MAP = {'log_loss': lambda y_true, y_pred:
+                      metrics.log_loss(y_true, y_pred, eps=1e-6)}
+
+class UnrecognisedLossException(Exception):
+    pass
+
+
+def DefaultPredictFn(model_, X, model_type=SKLEARN, classification=False,
+                     proba=False, **kwargs):
+    if model_type == SKLEARN:
+        if proba:
+            return model_.predict_proba(X)
+        else:
+            return model_.predict(X)
+    elif model_type == KERAS:
+        if classification:
+            if proba:
+                return model_.predict_proba(X)[:, 0]
+            else:
+                return model_.predict_classes(X)[:, 0]
+        else:
+            return model_.predict(X)[:, 0]
+
+
+def DefaultEvalFn(model_, X, y, loss='mse', metrics=[], **kwargs):
+    #print('Loss: %s' % loss)
+    if isinstance(X, pd.DataFrame):
         X = X.as_matrix()
+    if isinstance(y, pd.DataFrame) or isinstance(y, pd.Series):
         y = y.as_matrix()
-    pred = model.predict(X)[:,0]
-    return Result(model, pred, y, np.mean(np.abs(pred - y)))
+    
+    classification = (loss == 'log_loss')
+    to_find = set([loss] + metrics)
+    normal_loss_fns = []
+    proba_loss_fns = []
+    for loss_type in to_find:
+        if loss_type in _LOSS_FN_MAP:
+            normal_loss_fns.append(loss_type)
+        elif loss_type in _PROBA_LOSS_FN_MAP:
+            proba_loss_fns.append(loss_type)
+        else:
+            raise UnrecognisedLossException(loss_type)
+
+    losses = {}
+    pred = DefaultPredictFn(model_, X,
+                            classification=classification,
+                            proba=False,
+                            **kwargs)
+    #print(y)
+    #print(pred)
+    for loss_type in normal_loss_fns:
+        losses[loss_type] = _LOSS_FN_MAP[loss_type](y, pred)
+
+    if proba_loss_fns:
+        proba = DefaultPredictFn(model_, X,
+                                 classification=classification,
+                                 proba=True,
+                                 **kwargs)
+        for loss_type in proba_loss_fns:
+            losses[loss_type] = _PROBA_LOSS_FN_MAP[loss_type](y, proba)
+    
+    loss_metrics = {loss_type: loss_val
+                    for loss_type, loss_val in losses.items()
+                    if loss_type != loss}
+    return Result(model_, pred, y, losses[loss], loss_metrics)
 
 
-def default_performance_fn(performance, verbose=False):
+def DefaultPerformanceFn(performance, verbose=False, **kwargs):
     loss_sum = 0.0
     for fold_name, loss in sorted(performance.items()):
         if verbose:
@@ -245,83 +263,100 @@ def default_performance_fn(performance, verbose=False):
     return loss_sum / len(performance)
 
 
-def cross_evaluate(X, y, model_fn,
-                   split_fn=None,
-                   train_fn=None,
-                   eval_fn=None,
-                   performance_fn=None,
-                   process_fn=None,
-                   train_size=0.8,
-                   verbose=False):
-    if not split_fn:
-        split_fn = split_by_year
-    if not eval_fn:
-        eval_fn = eval_mae
-    if not performance_fn:
-        performance_fn = lambda performance_: default_performance_fn(performance_, verbose=verbose)
-    if not train_fn:
-        train_fn = lambda model_fn_, eval_fn_, X_, y_: default_train_fn(
-                model_fn_, eval_fn_, X_, y_, process_fn=process_fn, train_size=train_size, verbose=verbose)
+def CrossEvaluate(X, y, model_fn, **kwargs):
+    if 'fold_fn' not in kwargs:
+        kwargs['fold_fn'] = SplitByYear
+    fold_fn = kwargs['fold_fn']
 
+    if 'eval_fn' in kwargs:
+        eval_fn = kwargs['eval_fn']
+        del kwargs['eval_fn']
+    else:
+        eval_fn = DefaultEvalFn
+
+    if 'performance_fn' not in kwargs:
+        kwargs['performance_fn'] = lambda performance: (
+                DefaultPerformanceFn(performance, **kwargs))
+    performance_fn = kwargs['performance_fn']
+    
+    if 'process_fn' not in kwargs:
+        kwargs['process_fn'] = None
+    process_fn = kwargs['process_fn']
+
+    if 'train_fn' not in kwargs:
+        kwargs['train_fn'] = DefaultTrainFn
+    train_fn = kwargs['train_fn']
+
+    if 'verbose' not in kwargs:
+        kwargs['verbose'] = False
+    verbose = kwargs['verbose']
     if verbose:
         print('Cross evaluating model...')
-    folds = split_fn(X)
+    
+    folds = fold_fn(X)
     performance = {}
     results = {}
     for fold_name, fold_indices in sorted(folds.items()):
-        fold_index_set = set(fold_indices)
-        in_fold = [x in fold_index_set for x in X.index]
-        not_in_fold = [not x for x in in_fold]
-        if process_fn:
-            train_X, train_y, test_X, test_y = process_fn(X[not_in_fold], y[not_in_fold], X[in_fold], y[in_fold])
-        else:
-            train_X = X[not_in_fold]
-            train_y = y[not_in_fold]
-            test_X = X[in_fold]
-            test_y = y[in_fold]
         if verbose:
             print("Evaluating on fold '%s'..." % fold_name)
-        model, loss = train_fn(model_fn, eval_fn, train_X, train_y, process_fn=process_fn, verbose=verbose)
-        results[fold_name] = eval_fn(model, test_X, test_y)
+        in_fold = sorted(fold_indices)
+        not_in_fold = sorted(list(set(X.index) - set(in_fold)))
+        train_X = X.loc[not_in_fold]
+        train_y = y.loc[not_in_fold]
+        test_X = X.loc[in_fold]
+        test_y = y.loc[in_fold]
+        if process_fn:
+            transform_fn = process_fn(train_X, train_y, **kwargs)
+            test_X, test_y = transform_fn(test_X, test_y, **kwargs)
+        else:
+            transform_fn = None
+        kwargs['transform_fn'] = transform_fn
+
+        model_, loss = train_fn(model_fn, eval_fn, train_X, train_y, **kwargs)
+        
+        results[fold_name] = eval_fn(model_, test_X, test_y, **kwargs)
         performance[fold_name] = results[fold_name].loss
         if verbose:
             print("Score on fold '%s': %.5f" % (fold_name, performance[fold_name]))
             for metric_name, metric_result in results[fold_name].metrics.items():
                 print('%s: %.5f' % (metric_name, metric_result))
+    
     final_performance = performance_fn(performance)
     if verbose:
         print('Final cross evaluation score: %.5f' % final_performance)
     return final_performance, results
 
 
-def roll_model(test_X, test_y, model, increment=1000):
-    pred = np.zeros(test_y.shape)
-    chunks = list(range(0, test_X.shape[0], increment))
-    chunks.append(test_X.shape[0])
+def MakeNN(hidden_layers, loss='mse', reg_strength=0.0):
+   
+    if loss == 'log_loss':
+        loss = 'binary_crossentropy'
+        output_activation = 'sigmoid'
+    else:
+        output_activation = 'relu'
 
-    for i in range(len(chunks) - 1):
-        start = chunks[i]
-        end = chunks[i + 1]
-        pred[start:end] = model.predict(test_X[start:end,:])[:,0]
-        
-        mae = np.mean(np.abs(pred[start:end] - test_y[start:end]))
-        print('Increment %d: mae = %.5f' % (i + 1, mae))
+    def model_fn(X):
+        nn = models.Sequential()
 
-        X_increment = test_X[start:end]
-        y_increment = test_y[start:end]
-        X_val = test_X[:end]
-        y_val = test_y[:end]
+        nn.add(layers.Dense(units=hidden_layers[0], input_dim=X.shape[1],
+                            kernel_initializer='normal',
+                            bias_regularizer=regularizers.l2(reg_strength),
+                            kernel_regularizer=regularizers.l2(reg_strength),
+                            activation='relu'))
+        for i in range(1, len(hidden_layers)):
+            nn.add(layers.Dense(units=hidden_layers[i],
+                                kernel_initializer='normal',
+                                bias_regularizer=regularizers.l2(reg_strength),
+                                kernel_regularizer=regularizers.l2(reg_strength),
+                                activation='relu'))
+        nn.add(layers.Dense(units=1,
+                            kernel_initializer='normal',
+                            bias_regularizer=regularizers.l2(reg_strength),
+                            kernel_regularizer=regularizers.l2(reg_strength),
+                            activation=output_activation))
 
-        previous_val_loss = 0
-        epoch = 1
-        model.fit(X_val, y_val, epochs=2, verbose=0)
-        #while True:
-        #    model.fit(X_increment, y_increment, epochs=1, verbose=0)
-        #    val_loss = model.evaluate(X_val,y_val, verbose=0)
-        #    if epoch > 1:
-        #        if val_loss > previous_val_loss:
-        #            break
-        #    previous_val_loss = val_loss
-        #    epoch += 1
+        nn.compile(loss=loss, optimizer='adam')
 
-    return pred
+        return nn
+    
+    return model_fn

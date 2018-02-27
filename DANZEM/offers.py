@@ -49,9 +49,18 @@ def GetLatestOffers(df, minutes_before=0, wind=False):
                        'Trader', 'Band']).first()
 
 
-def GetStacks(year, month, day, minutes_before=0, wind=False):
-    ym = (year, month)
-    ymd = (year, month, day)
+def GetDispatchByIsland(df):
+    data.AddTPIDSeries(df, 'Date', 'TradingPeriod', as_index=False)
+    df = df.groupby([data.TPID, 'Island']).sum()
+    df = df[['Generation (MW)']].reset_index()
+    df.set_index(data.TPID, inplace=True)
+    return pd.DataFrame(
+            {'NI Dispatch (MW)': df['Generation (MW)'][df['Island'] == 'NI'],
+             'SI Dispatch (MW)': df['Generation (MW)'][df['Island'] == 'SI']})
+
+
+def GetStacks(ymd, minutes_before=0, wind=False):
+    ym = ymd[:2]
     
     offer_df = data.GetOfferFile(ymd)
     offered_stacks = GetLatestOffers(offer_df,

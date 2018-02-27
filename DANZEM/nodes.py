@@ -7,7 +7,7 @@ from . import utils
 
 NODES_DIR = os.path.join(utils.DATA_BASE_DIR, 'Nodes')
 
-ISLANDS_PATH_ = NODES_DIR + '/islands.csv'
+ISLANDS_PATH_ = os.path.join(NODES_DIR, 'islands.csv')
 
 def GetIslandFn():
     islands_df = pd.read_csv(ISLANDS_PATH_, index_col=0)
@@ -20,7 +20,7 @@ def GetIslandFn():
     return Island
 
 
-WIND_NODES_PATH_ = NODES_DIR + 'wind_nodes.csv'
+WIND_NODES_PATH_ = os.path.join(NODES_DIR, 'wind_nodes.csv')
 
 def GetWindNodes():
     wind_nodes_df = pd.read_csv(WIND_NODES_PATH_)
@@ -28,3 +28,8 @@ def GetWindNodes():
             set([x.split()[0] for x in wind_nodes_df['Node']]))
 
 
+NON_CONFORMING_NODES_PATH_ = os.path.join(NODES_DIR, 'non_conforming.csv')
+
+def GetNonConformingNodes():
+    non_conforming_df = pd.read_csv(NON_CONFORMING_NODES_PATH_)
+    return set(non_conforming_df['Node'])

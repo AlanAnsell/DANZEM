@@ -9,6 +9,7 @@ import pytz
 import os
 from calendar import monthrange
 
+from . import nodes
 from . import utils
 
 NZST = pytz.timezone('Pacific/Auckland')
@@ -17,17 +18,18 @@ DT_FORMAT = '%d/%m/%Y %H:%M:%S'
 
 TPID = 'tpid'
 
-#DATA_BASE_DIR_ = 'DANZEM/data'
-BIDS_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'Bids')
-FINAL_PRICE_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'FinalPrices')
-LGP_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'LoadGenerationPrice')
-OFFERS_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'Offers')
-CLEARED_OFFERS_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'ClearedOffers')
-GENERATION_DIR_ = os.path.join(utils.DATA_BASE_DIR, 'Generation')
-
-
-#def SetDir(dir_):
-#    DATA_BASE_DIR_ = dir_
+GetLGPDir = lambda: os.path.join(utils.DATA_BASE_DIR,
+                                 'LoadGenerationPrice')
+GetBidsDir = lambda: os.path.join(utils.DATA_BASE_DIR,
+                                  'Bids')
+GetFinalPriceDir = lambda: os.path.join(utils.DATA_BASE_DIR,
+                                        'FinalPrices')
+GetOffersDir = lambda: os.path.join(utils.DATA_BASE_DIR,
+                                    'Offers')
+GetClearedOffersDir = lambda: os.path.join(utils.DATA_BASE_DIR,
+                                           'ClearedOffers')
+GetGenerationDir = lambda: os.path.join(utils.DATA_BASE_DIR,
+                                        'Generation')
 
 
 def Today():
@@ -58,6 +60,18 @@ def DayRange(first, last):
             for day in range(first_day[ym], last_day[ym] + 1)]
 
 
+def GetYearStrFromTPID(tpid):
+    return tpid[:4]
+
+
+def GetMonthStrFromTPID(tpid):
+    return tpid[:7]
+
+
+def GetDayStrFromTPID(tpid):
+    return tpid[:10]
+
+    
 def FileNameFromDateTuple(date):
     if len(date) == 2:
         return '%d%02d' % (date[0], date[1])
@@ -72,33 +86,43 @@ def DateStrFromDateTuple(date):
         return '%d/%02d/%02d' % (date[0], date[1], date[2])
 
 
+def TupleFromTPID(tpid):
+    return tuple(int(x) for x in tpid.split('_'))
+
+
 def GetBidFile(ymd):
-    file_path = '%s/%s.csv' % (BIDS_DIR_, FileNameFromDateTuple(ymd))
+    file_name = FileNameFromDateTuple(ymd) + '.csv'
+    file_path = os.path.join(GetBidsDir(), file_name)
     return pd.read_csv(file_path)
 
 
 def GetFinalPriceFile(ym):
-    file_path = '%s/%s.csv' % (FINAL_PRICE_DIR_, FileNameFromDateTuple(ym))
+    file_name = FileNameFromDateTuple(ym) + '.csv'
+    file_path = os.path.join(GetFinalPriceDir(), file_name)
     return pd.read_csv(file_path)
 
 
 def GetLGPFile(ymd):
-    file_path = '%s/%s.csv' % (LGP_DIR_, FileNameFromDateTuple(ymd))
+    file_name = FileNameFromDateTuple(ymd) + '.csv'
+    file_path = os.path.join(GetLGPDir(), file_name)
     return pd.read_csv(file_path)
 
 
 def GetOfferFile(ymd):
-    file_path = '%s/%s.csv' % (OFFERS_DIR_, FileNameFromDateTuple(ymd))
+    file_name = FileNameFromDateTuple(ymd) + '.csv'
+    file_path = os.path.join(GetOffersDir(), file_name)
     return pd.read_csv(file_path)
 
 
 def GetClearedOffersFile(ymd):
-    file_path = '%s/%s.csv' % (CLEARED_OFFERS_DIR_, FileNameFromDateTuple(ymd))
+    file_name = FileNameFromDateTuple(ymd) + '.csv'
+    file_path = os.path.join(GetClearedOffersDir(), file_name)
     return pd.read_csv(file_path)
 
 
 def GetGenerationFile(ym):
-    file_path = '%s/%s.csv' % (GENERATION_DIR_, FileNameFromDateTuple(ym))
+    file_name = FileNameFromDateTuple(ym) + '.csv'
+    file_path = os.path.join(GetGenerationDir(), file_name)
     return pd.read_csv(file_path)
 
 
@@ -113,6 +137,10 @@ def TodayAndTomorrow(year, month, day):
     today = NZST.localize(today)
     tomorrow = NZST.localize(tomorrow)
     return today, tomorrow
+
+
+def IsDST(year, month, day):
+    return bool(GetStructTime(year, month, day).tm_isdst)
 
 
 def DSTBegins(year=None, month=None, day=None, today=None, tomorrow=None):
@@ -135,6 +163,18 @@ def NumTPs(year, month, day):
         return 46
     else:
         return 48
+
+
+def TPRange(first, last):
+    ymds = DayRange(first[:3], last[:3])
+    first_tp = {ymd: 1 for ymd in ymds}
+    first_tp[ymds[0]] = first[3]
+    last_tp = {ymd: NumTPs(ymd[0], ymd[1], ymd[2]) for ymd in ymds}
+    last_tp[ymds[-1]] = last[3]
+
+    return [(ymd[0], ymd[1], ymd[2], tp)
+            for ymd in ymds
+            for tp in range(first_tp[ymd], last_tp[ymd] + 1)]
 
 
 def TPIDToDateTime(tpid):
@@ -170,47 +210,6 @@ def TPIDToDateTime(tpid):
     return dt
 
 
-def GenerateTPIDs(start, end):
-    [start_year, start_month, start_day, start_tp] = [int(x) for x in start.split('_')]
-    [end_year, end_month, end_day, end_tp] = [int(x) for x in end.split('_')]
-    
-    years = list(range(start_year, end_year + 1))
-    
-    if len(years) == 1:
-        yms = [(start_year, month) for month in range(start_month, end_month + 1)]
-    else:
-        yms = ([(start_year, month) for month in range(start_month, 13)] +
-               [(year, month) for year in years[1:-1] for month in range(1, 13)] +
-               [(end_year, month) for month in range(1, end_month + 1)])
-
-    if len(yms) == 1:
-        ymds = [(start_year, start_month, day)
-                for day in range(start_day, end_day + 1)]
-    else:
-        ymds = ([(start_year, start_month, day)
-                  for day in range(start_day,
-                                   monthrange(start_year, start_month)[1] + 1)] +
-                [(year, month, day)
-                 for year, month in yms[1:-1]
-                 for day in range(1, monthrange(year, month)[1] + 1)] +
-                [(end_year, end_month, day) for day in range(1, end_day + 1)])
-
-    if len(ymds) == 1:
-        ymdtps = [(start_year, start_month, start_day, tp)
-                  for tp in range(start_tp, end_tp + 1)]
-    else:
-        ymdtps = ([(start_year, start_month, start_day, tp)
-                   for tp in range(start_tp,
-                                   NumTPs(start_year, start_month, start_day) + 1)] + 
-                  [(year, month, day, tp)
-                   for year, month, day in ymds[1:-1]
-                   for tp in range(1, NumTPs(year, month, day) + 1)] +
-                  [(end_year, end_month, end_day, tp)
-                   for tp in range(1, end_tp + 1)])
-    
-    return ['%d_%02d_%02d_%02d' % ymdtp for ymdtp in ymdtps]
-
-
 def _LoadHolidays():
     holidays = pd.read_csv('Data/Holidays/holidays_1980_2020.csv')
     national_holidays = set([])
@@ -228,7 +227,7 @@ class InvalidDateException(Exception):
 
 DATE_SEPARATORS_ = ['/', '-']
 
-def DateTupleFromStr(date):
+def DateTupleFromStr(date, us=False):
     parts = None
     for sep in DATE_SEPARATORS_:
         split = date.split(sep)
@@ -241,6 +240,8 @@ def DateTupleFromStr(date):
 
     first_number = int(parts[0])
     if first_number <= 31:
+        if us:
+            parts[:2] = reversed(parts[:2])
         parts.reverse()
 
     return (int(parts[0]), int(parts[1]), int(parts[2]))
@@ -261,4 +262,18 @@ def AddTPIDSeries(df, date_series_name, tp_series_name, as_index=True):
     df[TPID] = MakeTPIDSeries(df[date_series_name], df[tp_series_name])
     if as_index:
         df.set_index(TPID, inplace=True)
+
+
+def AddIslandSeries(df, node_series_name):
+    df['Island'] = df[node_series_name].apply(nodes.GetIslandFn())
+
+
+def GetDataForRange(start, end, data_fn):
+    dates = None
+    if len(start) == 2:
+        dates = MonthRange(start, end)
+    else:
+        dates = DayRange(start, end)
+    return pd.concat([data_fn(date)
+                      for date in dates])
 
