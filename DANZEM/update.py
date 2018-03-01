@@ -103,7 +103,7 @@ BID_DATA_START_ = (2012, 12, 13)
 
 def UpdateBids():
     url_fn = MakeDayUrlFn(BID_URL_PREFIX_, 'Bids')
-    UpdateDataset('Bids', data.BIDS_DIR_, url_fn, BID_DATA_START_)
+    UpdateDataset('Bids', data.GetBidsDir(), url_fn, BID_DATA_START_)
 
 
 FINAL_PRICE_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -112,7 +112,7 @@ FINAL_PRICE_START_ = (2010, 1)
 
 def UpdateFinalPrices():
     url_fn = MakeMonthUrlFn(FINAL_PRICE_URL_PREFIX_, 'Final_prices')
-    UpdateDataset('FinalPrices', data.FINAL_PRICE_DIR_,
+    UpdateDataset('FinalPrices', data.GetFinalPriceDir(),
                   url_fn, FINAL_PRICE_START_)
 
 
@@ -122,7 +122,7 @@ LGP_START_ = (2013, 1, 1)
 
 def UpdateLGP():
     url_fn = MakeDayUrlFn(LGP_URL_PREFIX_, 'Load_Generation_Price')
-    UpdateDataset('LoadGenerationPrice', data.LGP_DIR_, url_fn,
+    UpdateDataset('LoadGenerationPrice', data.GetLGPDir(), url_fn,
                   LGP_START_, url_suffixes=EXTENDED_URL_SUFFIXES_)
 
 
@@ -132,7 +132,7 @@ OFFERS_START_ = (2013, 1, 1)
 
 def UpdateOffers():
     url_fn = MakeDayUrlFn(OFFERS_URL_PREFIX_, 'Offers')
-    UpdateDataset('Offers', data.OFFERS_DIR_, url_fn, OFFERS_START_)
+    UpdateDataset('Offers', data.GetOffersDir(), url_fn, OFFERS_START_)
 
 
 CLEARED_OFFERS_URL_PREFIX_ = ('https://www.emi.ea.govt.nz/Wholesale/'
@@ -141,7 +141,7 @@ CLEARED_OFFERS_START_ = OFFERS_START_
 
 def UpdateClearedOffers():
     url_fn = MakeDayUrlFn(CLEARED_OFFERS_URL_PREFIX_, 'Cleared_Offers')
-    UpdateDataset('ClearedOffers', data.CLEARED_OFFERS_DIR_, url_fn,
+    UpdateDataset('ClearedOffers', data.GetClearedOffersDir(), url_fn,
                   CLEARED_OFFERS_START_, url_suffixes=EXTENDED_URL_SUFFIXES_)
 
 
@@ -151,7 +151,7 @@ GENERATION_START_ = (2013, 1)
 
 def UpdateGeneration():
     url_fn = MakeMonthUrlFn(GENERATION_URL_PREFIX_, 'Generation_MD')
-    UpdateDataset('Generation', data.GENERATION_DIR_, url_fn,
+    UpdateDataset('Generation', data.GetGenerationDir(), url_fn,
                   GENERATION_START_)
 
 
